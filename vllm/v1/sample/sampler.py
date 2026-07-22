@@ -99,7 +99,9 @@ class Sampler(nn.Module):
             logits, sampling_metadata, predict_bonus_token
         )
         # Sample the next token.
-        sampled, processed_logprobs = self.sample(logits, sampling_metadata)
+        sampled, processed_logprobs, token_entropy = self.sample(
+            logits, sampling_metadata
+        )
         if processed_logprobs is not None:
             raw_logprobs = processed_logprobs
         # Convert sampled token ids to int64 (long) type to ensure compatibility
@@ -145,6 +147,9 @@ class Sampler(nn.Module):
             # token per request.
             sampled_token_ids=sampled.unsqueeze(-1),
             logprobs_tensors=logprobs_tensors,
+            token_entropy=(
+                token_entropy.unsqueeze(-1) if token_entropy is not None else None
+            ),
         )
         return sampler_output
 
@@ -245,7 +250,7 @@ class Sampler(nn.Module):
         logits: torch.Tensor,
         sampling_metadata: SamplingMetadata,
         logprobs_mode_override: LogprobsMode | None = None,
-    ) -> tuple[torch.Tensor, torch.Tensor | None]:
+    ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor | None]:
         """Sample logits based on sampling metadata.
 
         The various logits processing functions called in this method
@@ -268,7 +273,12 @@ class Sampler(nn.Module):
                         processed_logprobs = logits
                     elif logprobs_mode == "processed_logprobs":
                         processed_logprobs = self.compute_logprobs(logits)
-                return greedy_sampled, processed_logprobs
+                entropy = (
+                    self.compute_entropy(logits)
+                    if sampling_metadata.return_entropy
+                    else None
+                )
+                return greedy_sampled, processed_logprobs, entropy
 
         assert sampling_metadata.temperature is not None
 
@@ -282,6 +292,10 @@ class Sampler(nn.Module):
         for processor in sampling_metadata.logitsprocs.argmax_invariant:
             logits = processor.apply(logits)
 
+        entropy = (
+            self.compute_entropy(logits) if sampling_metadata.return_entropy else None
+        )
+
         # Apply top_k and/or top_p.
         random_sampled, processed_logprobs = self.topk_topp_sampler(
             logits,
@@ -291,7 +305,7 @@ class Sampler(nn.Module):
         )
 
         if greedy_sampled is None:
-            return random_sampled, processed_logprobs
+            return random_sampled, processed_logprobs, entropy
 
         sampled = torch.where(
             sampling_metadata.temperature < _SAMPLING_EPS,
@@ -299,7 +313,17 @@ class Sampler(nn.Module):
             random_sampled,
             out=greedy_sampled,  # Reuse tensor
         )
-        return sampled, processed_logprobs
+        return sampled, processed_logprobs, entropy
+
+    @staticmethod
+    def compute_entropy(logits: torch.Tensor) -> torch.Tensor:
+        """Shannon entropy in nats for a full-vocabulary logit tensor."""
+        log_probs = torch.log_softmax(logits, dim=-1, dtype=torch.float32)
+        probs = torch.exp(log_probs)
+        terms = torch.where(
+            torch.isfinite(log_probs), probs * log_probs, torch.zeros_like(log_probs)
+        )
+        return torch.nan_to_num(-terms.sum(dim=-1))
 
     @staticmethod
     def compute_logprobs(logits: torch.Tensor) -> torch.Tensor:

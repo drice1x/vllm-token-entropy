@@ -14,3 +14,4 @@ class SamplerOutput:
     num_nans: torch.Tensor | None
     num_sampled: torch.Tensor | None
     num_rejected: torch.Tensor | None = None
+    token_entropy: torch.Tensor | None = None

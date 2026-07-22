@@ -259,6 +259,7 @@ class InputBatch:
         # req_id -> list of specific token IDs to compute logprobs for
         # More efficient than num_logprobs=-1 when only a few tokens are needed
         self.logprob_token_ids: dict[str, list[int]] = {}
+        self.return_entropy_reqs: set[str] = set()
 
         # Internal representation of per-step batch state changes, used for
         # reordering persistent batch and generating logitsprocs batch state
@@ -425,6 +426,8 @@ class InputBatch:
             # Store specific token IDs to compute logprobs for (more efficient)
             if sampling_params.logprob_token_ids is not None:
                 self.logprob_token_ids[req_id] = sampling_params.logprob_token_ids
+            if sampling_params.return_entropy:
+                self.return_entropy_reqs.add(req_id)
 
             if sampling_params.allowed_token_ids:
                 self.has_allowed_token_ids.add(req_id)
@@ -555,6 +558,7 @@ class InputBatch:
         self.generators.pop(req_index, None)
         self.num_logprobs.pop(req_id, None)
         self.logprob_token_ids.pop(req_id, None)
+        self.return_entropy_reqs.discard(req_id)
         if self.prev_req_id_to_index is not None:
             self.prev_req_id_to_index.pop(req_id, None)
 
@@ -934,6 +938,7 @@ class InputBatch:
             bad_words_token_ids=self.bad_words_token_ids,
             logitsprocs=self.logitsprocs,
             thinking_budget_state_holder=self.thinking_budget_state_holder,
+            return_entropy=bool(self.return_entropy_reqs),
         )
 
     def get_pooling_params(self) -> list[PoolingParams]:

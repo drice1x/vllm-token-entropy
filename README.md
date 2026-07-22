@@ -19,6 +19,22 @@ For events, please visit [vllm.ai/events](https://vllm.ai/events) to join us.
 
 ---
 
+## Token entropy extension
+
+This fork adds opt-in token-generation entropy without capturing hidden-state
+activations. Set `"return_entropy": true` on an OpenAI-compatible chat
+completion request. Every response choice includes `"token_entropy"`, a list
+of Shannon entropy values in nats for the full processed vocabulary
+distribution before top-k/top-p truncation.
+
+```json
+{
+  "model": "your-model",
+  "messages": [{"role": "user", "content": "Hello"}],
+  "return_entropy": true
+}
+```
+
 ## About
 
 vLLM is a fast and easy-to-use library for LLM inference and serving.

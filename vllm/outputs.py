@@ -45,6 +45,7 @@ class CompletionOutput:
     routed_experts: np.ndarray | None = None  # [seq_len,layer_num,topk]
     finish_reason: str | None = None
     stop_reason: int | str | None = None
+    token_entropy: list[float] | None = None
     lora_request: LoRARequest | None = None
 
     def finished(self) -> bool:
@@ -168,6 +169,10 @@ class RequestOutput:
                         if next_completion.logprobs:
                             assert completion.logprobs is not None
                             completion.logprobs.extend(next_completion.logprobs)  # type: ignore[arg-type]
+                        if next_completion.token_entropy is not None:
+                            if completion.token_entropy is None:
+                                completion.token_entropy = []
+                            completion.token_entropy.extend(next_completion.token_entropy)
                         completion.cumulative_logprob = (
                             next_completion.cumulative_logprob
                         )

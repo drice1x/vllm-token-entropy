@@ -50,10 +50,12 @@ class Sampler:
         self.logprob_token_ids_state = LogprobTokenIdsState(max_num_reqs, device)
         self.num_speculative_tokens = num_speculative_tokens
         self.use_flashinfer = flashinfer_sampler_supported()
+        self.return_entropy = np.zeros(max_num_reqs, dtype=np.bool_)
 
     def add_request(
         self, req_idx: int, prompt_len: int, sampling_params: SamplingParams
     ) -> None:
+        self.return_entropy[req_idx] = sampling_params.return_entropy
         self.sampling_states.add_request(req_idx, sampling_params)
         self.penalties_state.add_request(req_idx, sampling_params)
         self.logit_bias_state.add_request(req_idx, prompt_len, sampling_params)
@@ -89,7 +91,7 @@ class Sampler:
         )
         return_logprobs = max_num_logprobs != NO_LOGPROBS or max_per_req_token_ids > 0
 
-        sampled, processed_logits = self.sample(
+        sampled, processed_logits, token_entropy = self.sample(
             logits,
             expanded_idx_mapping,
             idx_mapping_np,
@@ -97,6 +99,7 @@ class Sampler:
             input_ids,
             expanded_local_pos,
             return_logprobs=return_logprobs,
+            return_entropy=bool(self.return_entropy[idx_mapping_np].any()),
         )
 
         if return_logprobs:
@@ -139,6 +142,7 @@ class Sampler:
             num_nans=num_nans,
             num_sampled=num_sampled,
             num_rejected=num_rejected,
+            token_entropy=token_entropy,
         )
         return sampler_output
 
@@ -203,7 +207,8 @@ class Sampler:
         input_ids: torch.Tensor,
         expanded_local_pos: torch.Tensor,
         return_logprobs: bool = False,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+        return_entropy: bool = False,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None]:
         processed_logits = self.apply_sampling_params(
             logits,
             expanded_idx_mapping,
@@ -213,6 +218,18 @@ class Sampler:
             expanded_local_pos,
             skip_top_k_top_p=True,
         )
+        token_entropy = None
+        if return_entropy:
+            log_probs = torch.log_softmax(
+                processed_logits, dim=-1, dtype=torch.float32
+            )
+            probs = torch.exp(log_probs)
+            terms = torch.where(
+                torch.isfinite(log_probs),
+                probs * log_probs,
+                torch.zeros_like(log_probs),
+            )
+            token_entropy = torch.nan_to_num(-terms.sum(dim=-1)).view(-1, 1)
         top_k, top_p = self.sampling_states.get_top_k_top_p(
             expanded_idx_mapping, idx_mapping_np
         )
@@ -243,4 +260,4 @@ class Sampler:
                 apply_temperature=False,
                 use_fp64=self.use_fp64_gumbel,
             )
-        return sampled, processed_logits
+        return sampled, processed_logits, token_entropy

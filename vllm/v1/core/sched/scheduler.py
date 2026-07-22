@@ -1593,6 +1593,7 @@ class Scheduler(SchedulerInterface):
     ) -> dict[int, EngineCoreOutputs]:
         sampled_token_ids = model_runner_output.sampled_token_ids
         logprobs = model_runner_output.logprobs
+        token_entropy = model_runner_output.token_entropy
         prompt_logprobs_dict = model_runner_output.prompt_logprobs_dict
         num_scheduled_tokens = scheduler_output.num_scheduled_tokens
         pooler_outputs = model_runner_output.pooler_output
@@ -1711,6 +1712,7 @@ class Scheduler(SchedulerInterface):
 
             stopped = False
             new_logprobs = None
+            new_token_entropy = None
             new_token_ids = generated_token_ids
             pooler_output = pooler_outputs[req_index] if pooler_outputs else None
             kv_transfer_params = None
@@ -1827,6 +1829,13 @@ class Scheduler(SchedulerInterface):
             ):
                 new_logprobs = logprobs.slice_request(req_index, len(new_token_ids))
 
+            if (
+                request.sampling_params is not None
+                and request.sampling_params.return_entropy
+                and token_entropy is not None
+            ):
+                new_token_entropy = token_entropy[req_index][: len(new_token_ids)]
+
             if num_nans_in_logits is not None and req_id in num_nans_in_logits:
                 request.num_nans_in_logits = num_nans_in_logits[req_id]
 
@@ -1841,6 +1850,7 @@ class Scheduler(SchedulerInterface):
                         finish_reason=finish_reason,
                         new_logprobs=new_logprobs,
                         new_prompt_logprobs_tensors=prompt_logprobs_tensors,
+                        new_token_entropy=new_token_entropy,
                         pooling_output=pooler_output,
                         stop_reason=request.stop_reason,
                         events=request.take_events(),

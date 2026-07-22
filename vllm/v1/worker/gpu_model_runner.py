@@ -260,6 +260,7 @@ class AsyncGPUModelRunnerOutput(AsyncModelRunnerOutput):
         model_runner_output: ModelRunnerOutput,
         sampled_token_ids: torch.Tensor,
         logprobs_tensors: LogprobsTensors | None,
+        token_entropy: torch.Tensor | None,
         invalid_req_indices: list[int],
         async_output_copy_stream: torch.cuda.Stream,
         vocab_size: int,
@@ -278,6 +279,7 @@ class AsyncGPUModelRunnerOutput(AsyncModelRunnerOutput):
         self._sampled_token_ids = sampled_token_ids
         self.vocab_size = vocab_size
         self._logprobs_tensors = logprobs_tensors
+        self._token_entropy = token_entropy
         self._routed_experts = routed_experts
         self._has_fault: torch.Tensor | None = None
 
@@ -291,6 +293,11 @@ class AsyncGPUModelRunnerOutput(AsyncModelRunnerOutput):
             self._logprobs_tensors_cpu = (
                 self._logprobs_tensors.to_cpu_nonblocking()
                 if self._logprobs_tensors
+                else None
+            )
+            self._token_entropy_cpu = (
+                self._token_entropy.to("cpu", non_blocking=True)
+                if self._token_entropy is not None
                 else None
             )
             self._routed_experts_cpu = (
@@ -314,6 +321,7 @@ class AsyncGPUModelRunnerOutput(AsyncModelRunnerOutput):
         # Release the device tensors once the copy has completed.
         del self._logprobs_tensors
         del self._sampled_token_ids
+        del self._token_entropy
         if max_gen_len == 1:
             valid_sampled_token_ids = self.sampled_token_ids_cpu.tolist()
             for i in self._invalid_req_indices:
@@ -332,6 +340,11 @@ class AsyncGPUModelRunnerOutput(AsyncModelRunnerOutput):
         output = self._model_runner_output
         output.sampled_token_ids = valid_sampled_token_ids
         output.logprobs = logprobs_lists
+        if self._token_entropy_cpu is not None and max_gen_len == 1:
+            entropy = self._token_entropy_cpu.tolist()
+            for i in self._invalid_req_indices:
+                entropy[i].clear()
+            output.token_entropy = entropy
 
         if self._routed_experts_cpu is not None:
             output.routed_experts = self._routed_experts_cpu.tolists()
@@ -3701,6 +3714,7 @@ class GPUModelRunner(
         num_sampled_tokens = sampler_output.sampled_token_ids.shape[0]
         sampled_token_ids = sampler_output.sampled_token_ids
         logprobs_tensors = sampler_output.logprobs_tensors
+        token_entropy = sampler_output.token_entropy
         invalid_req_indices = []
         logprobs_lists = None
         if not self.use_async_scheduling:
@@ -4720,6 +4734,11 @@ class GPUModelRunner(
                 num_nans_in_logits=num_nans_in_logits,
                 cudagraph_stats=cudagraph_stats,
                 routed_experts=None,
+                token_entropy=(
+                    token_entropy.tolist()
+                    if token_entropy is not None and sampled_token_ids.shape[-1] == 1
+                    else None
+                ),
             )
 
         if not self.use_async_scheduling:
@@ -4764,6 +4783,7 @@ class GPUModelRunner(
                 model_runner_output=output,
                 sampled_token_ids=sampler_output.sampled_token_ids,
                 logprobs_tensors=sampler_output.logprobs_tensors,
+                token_entropy=sampler_output.token_entropy,
                 invalid_req_indices=invalid_req_indices,
                 async_output_copy_stream=self._get_or_create_async_output_copy_stream(),
                 vocab_size=self.input_batch.vocab_size,

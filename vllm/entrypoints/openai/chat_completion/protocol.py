@@ -110,6 +110,7 @@ class ChatCompletionResponseChoice(OpenAIBaseModel):
     # ``None`` if (a) the request was aborted before any forward pass,
     # or (b) ``enable_return_routed_experts`` is off server-side.
     routed_experts: str | None = None
+    token_entropy: list[float] | None = None
 
 
 class ChatCompletionResponse(OpenAIBaseModel):
@@ -145,6 +146,7 @@ class ChatCompletionResponseStreamChoice(OpenAIBaseModel):
     stop_reason: int | str | None = None
     # not part of the OpenAI spec but for tracing the tokens
     token_ids: list[int] | None = None
+    token_entropy: list[float] | None = None
 
 
 class ChatCompletionStreamResponse(OpenAIBaseModel):
@@ -202,6 +204,10 @@ class ChatCompletionRequest(OpenAIBaseModel):
     logit_bias: dict[str, float] | None = None
     logprobs: bool | None = False
     top_logprobs: int | None = 0
+    return_entropy: bool = Field(
+        default=False,
+        description="Return full-policy token entropy in nats for each generated token.",
+    )
     max_tokens: int | None = Field(
         default=None,
         deprecated="max_tokens is deprecated in favor of "
@@ -681,6 +687,7 @@ class ChatCompletionRequest(OpenAIBaseModel):
             ),
             prompt_logprobs=prompt_logprobs,
             logprob_token_ids=self.logprob_token_ids or None,
+            return_entropy=self.return_entropy,
             ignore_eos=self.ignore_eos,
             max_tokens=max_tokens,
             min_tokens=self.min_tokens,

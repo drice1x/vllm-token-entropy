@@ -178,6 +178,7 @@ class RequestState:
 
         # Routed experts accumulation (prompt + sample chunks)
         self.routed_experts_chunks: list[np.ndarray] = []
+        self.token_entropy_history: list[float] = []
 
         # Stream Interval
         self.stream_interval = stream_interval
@@ -403,6 +404,12 @@ class RequestState:
         if delta and logprobs:
             logprobs = logprobs[-len(token_ids) :]
 
+        entropy = (
+            self.token_entropy_history[-len(token_ids) :]
+            if delta and token_ids and self.token_entropy_history
+            else self.token_entropy_history[: len(token_ids)]
+        )
+
         # Concatenate routed experts on finish
         routed_experts = None
         if finished and self.routed_experts_chunks:
@@ -417,6 +424,7 @@ class RequestState:
             cumulative_logprob=self.logprobs_processor.cumulative_logprob,
             finish_reason=str(finish_reason) if finished else None,
             stop_reason=stop_reason if finished else None,
+            token_entropy=entropy or None,
         )
 
     def _new_pooling_output(self, pooling_output: torch.Tensor) -> PoolingOutput:
@@ -631,6 +639,9 @@ class OutputProcessor:
             stop_reason = engine_core_output.stop_reason
             kv_transfer_params = engine_core_output.kv_transfer_params
             ec_transfer_params = engine_core_output.ec_transfer_params
+            new_token_entropy = engine_core_output.new_token_entropy
+            if new_token_entropy is not None:
+                req_state.token_entropy_history.extend(new_token_entropy)
             if engine_core_output.routed_experts is not None:
                 req_state.routed_experts_chunks.append(
                     engine_core_output.routed_experts

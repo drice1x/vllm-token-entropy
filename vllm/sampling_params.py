@@ -287,6 +287,9 @@ class SamplingParams(
     NOTE: GC costs of FlatLogprobs is significantly smaller than
     list[dict[int, Logprob]]. After enabled, PromptLogprobs and
     SampleLogprobs would populated as FlatLogprobs."""
+    return_entropy: bool = False
+    """Return Shannon entropy (in nats) of the full processed token
+    distribution for each generated token, before top-k/top-p truncation."""
     # NOTE: This parameter is only exposed at the engine level for now.
     # It is not exposed in the OpenAI API server, as the OpenAI API does
     # not support returning only a list of token IDs.
@@ -384,6 +387,7 @@ class SamplingParams(
         skip_clone: bool = False,
         repetition_detection: RepetitionDetectionParams | None = None,
         logprob_token_ids: list[int] | None = None,
+        return_entropy: bool = False,
     ) -> "SamplingParams":
         if logit_bias is not None:
             # Fast path uses a dict comprehension; on failure we iterate once
@@ -435,6 +439,7 @@ class SamplingParams(
             logprobs=logprobs,
             prompt_logprobs=prompt_logprobs,
             logprob_token_ids=logprob_token_ids,
+            return_entropy=return_entropy,
             detokenize=detokenize,
             skip_special_tokens=skip_special_tokens,
             spaces_between_special_tokens=spaces_between_special_tokens,

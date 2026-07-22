@@ -48,6 +48,9 @@ class SamplingMetadata:
     # req_index -> list of token IDs to get logprobs for
     logprob_token_ids: dict[int, list[int]] | None = None
 
+    # Compute full-policy entropy for this batch.
+    return_entropy: bool = False
+
     # Speculative token ids
     spec_token_ids: list[list[int]] | None = None
     # When non-None, use ``holder.has_tracked_requests()`` to see if this batch applies

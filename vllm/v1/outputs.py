@@ -190,6 +190,7 @@ class SamplerOutput:
     # PLACEHOLDER_TOKEN_ID (-1 by default) is used for padding.
     sampled_token_ids: torch.Tensor
     logprobs_tensors: LogprobsTensors | None
+    token_entropy: torch.Tensor | None = None
 
 
 @dataclass
@@ -247,6 +248,9 @@ class ModelRunnerOutput:
     # [num_reqs, max_num_logprobs + 1]
     # [num_reqs]
     logprobs: LogprobsLists | None = None
+
+    # Per-request entropy values for tokens generated in this step.
+    token_entropy: list[list[float]] | None = None
 
     # req_id -> (token_ids, logprobs, ranks)
     # [prompt_len, num_prompt_logprobs]

@@ -689,6 +689,9 @@ class OpenAIServingChat(GenerateBaseServing):
                             token_ids=(
                                 as_list(output.token_ids) if include_token_ids else None
                             ),
+                            token_entropy=(
+                                output.token_entropy if request.return_entropy else None
+                            ),
                         )
 
                     # if the model is finished generating
@@ -716,6 +719,9 @@ class OpenAIServingChat(GenerateBaseServing):
                             stop_reason=output.stop_reason,
                             token_ids=(
                                 as_list(output.token_ids) if include_token_ids else None
+                            ),
+                            token_entropy=(
+                                output.token_entropy if request.return_entropy else None
                             ),
                         )
 
@@ -1004,6 +1010,9 @@ class OpenAIServingChat(GenerateBaseServing):
                     else None
                 ),
                 routed_experts=routed_experts_b64,
+                token_entropy=(
+                    output.token_entropy if request.return_entropy else None
+                ),
             )
             choice_data = maybe_filter_parallel_tool_calls(choice_data, request)
 
